@@ -175,3 +175,4 @@ cython_debug/
 #folders
 later
 change_nifi_cred.txt
+data
