@@ -64,6 +64,7 @@ services:
     ports:
       - "8443:8443"
     volumes:
+      - ./nifi-config/flow.json.gz:/opt/nifi/nifi-current/conf/flow.json.gz
       - nifi-conf:/opt/nifi/nifi-current/conf
       - nifi-state:/opt/nifi/nifi-current/state
       - ./data/staging:/data/staging
@@ -76,6 +77,7 @@ services:
     networks:
       - pipeline-net
 
+
   nifi-registry:
     image: apache/nifi-registry:1.26.0
     container_name: nifi-registry
@@ -87,6 +89,21 @@ services:
       - ./nifi-flows:/opt/nifi-registry/flow_storage
     networks:
       - pipeline-net
+
+  spark-service:
+    build:
+      context: ./spark_service
+    container_name: spark-service
+    ports:
+      - "5001:5001"
+      - "4040:4040"
+    volumes:
+      - ./data/processed:/data/processed
+    networks:
+      - pipeline-net
+
+
+
 
 volumes:
   elastic-data:

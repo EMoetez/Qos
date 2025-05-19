@@ -117,7 +117,7 @@ def process_csv():
         )
 
         # Save Parquet version for storage/analytics
-        df.write.mode("append").option("compression", "snappy").parquet("/home/moetez/data-ingestion/processed")
+        df.write.mode("append").option("compression", "snappy").parquet("/data/processed")
 
         # Convert to JSON strings for Elasticsearch (NDJSON)
         json_rows = df.toJSON().collect()
@@ -150,6 +150,10 @@ def shutdown_server():
     else:
         print("Shutting down Flask server...")
         func()
+
+@app.route("/")
+def home():
+    return "Flask is running!"
 
 
 #Added health endpoint to check for spark service before starting the ingestion
