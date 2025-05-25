@@ -1,31 +1,73 @@
 import time
 import requests
+import os
 
-KIBANA_URL = "http://kibana:5601"
+KIBANA_URL = "http://localhost:5601"
 NDJSON_FILE = "kibana-objects.ndjson"
 
+# Get credentials from environment variables
+ELASTIC_USERNAME = os.getenv("ELASTIC_USERNAME", "elastic")
+ELASTIC_PASSWORD = os.getenv("ELASTIC_PASSWORD", "VRWyDh40X76CdLq76O6I")
+
 def wait_for_kibana():
-    while True:
+    max_retries = 60  # Wait up to 5 minutes
+    retry_count = 0
+    
+    while retry_count < max_retries:
         try:
-            r = requests.get(f"{KIBANA_URL}/api/status")
+            # Try to access Kibana status endpoint
+            r = requests.get(
+                f"{KIBANA_URL}/api/status",
+                auth=(ELASTIC_USERNAME, ELASTIC_PASSWORD),
+                timeout=10
+            )
             if r.status_code == 200:
                 print("Kibana is ready.")
-                break
-        except:
-            pass
-        print("Waiting for Kibana...")
+                return True
+        except Exception as e:
+            print(f"Connection error: {e}")
+        
+        print(f"Waiting for Kibana... (attempt {retry_count + 1}/{max_retries})")
         time.sleep(5)
+        retry_count += 1
+    
+    print("Kibana did not become ready within the expected time.")
+    return False
 
 def import_saved_objects():
-    with open(NDJSON_FILE, 'rb') as f:
-        headers = {"kbn-xsrf": "true"}
-        res = requests.post(
-            f"{KIBANA_URL}/api/saved_objects/_import?overwrite=true",
-            headers=headers,
-            files={"file": f}
-        )
-        print("Import response:", res.status_code, res.text)
+    try:
+        if not os.path.exists(NDJSON_FILE):
+            print(f"Error: {NDJSON_FILE} file not found.")
+            return False
+            
+        with open(NDJSON_FILE, 'rb') as f:
+            headers = {
+                "kbn-xsrf": "true" #"Content-Type": "application/json"
+            }
+            
+            # Use basic auth for Kibana API
+            res = requests.post(
+                f"{KIBANA_URL}/api/saved_objects/_import?overwrite=true",
+                headers=headers,
+                files={"file": f},
+                auth=(ELASTIC_USERNAME, ELASTIC_PASSWORD)
+            )
+            
+            if res.status_code == 200:
+                print("Import successful!")
+                print("Import response:", res.json())
+                return True
+            else:
+                print(f"Import failed with status code: {res.status_code}")
+                print("Response:", res.text)
+                return False
+                
+    except Exception as e:
+        print(f"Error importing saved objects: {e}")
+        return False
 
 if __name__ == "__main__":
-    wait_for_kibana()
-    import_saved_objects()
+    if wait_for_kibana():
+        import_saved_objects()
+    else:
+        print("Failed to connect to Kibana. Exiting.")

@@ -4,9 +4,9 @@ from pyspark.sql.functions import col, to_timestamp, date_format, create_map, li
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType
 import json
 import os
-# import shutil # No longer needed as we are not clearing/writing directories
+import shutil # For the clear_directory_contents helper, if used.
 import logging
-# import uuid # No longer needed for batch output paths
+import uuid # For unique batch IDs
 
 app = Flask(__name__)
 
@@ -18,36 +18,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SPARK_MASTER_ENDPOINT = os.getenv("SPARK_MASTER_URL", "spark://spark-master:7077")
-
-# --- Spark Session Initialization ---
-spark = None
+# Spark Session - Will pick up SPARK_MASTER_URL from environment if set,
+# otherwise defaults to local. For your cluster, SPARK_MASTER_URL must be set.
 try:
-    logger.info(f"Attempting to connect to Spark master at: {SPARK_MASTER_ENDPOINT}")
+    logger.info("Initializing SparkSession...")
     spark = SparkSession.builder \
-        .appName("NetworkDataProcessing-NiFi-Only-Response") \
-        .master(SPARK_MASTER_ENDPOINT) \
-        .config("spark.driver.memory", "1g") \
-        .config("spark.executor.memory", "768m") \
-        .config("spark.executor.cores", "1") \
-        .config("spark.cores.max", "2") \
+        .appName("CSV-Processing-API-Clustered") \
         .config("spark.sql.shuffle.partitions", "4") \
+        .config("spark.executor.memory", "1g")      \
+        .config("spark.driver.memory", "1g")       \
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
         .config("spark.ui.port", "4041") \
         .getOrCreate()
-    logger.info(f"SparkSession created successfully for cluster processing. Master: {spark.sparkContext.master}")
+    logger.info(f"SparkSession initialized. Master: {spark.sparkContext.master}")
 except Exception as e:
     logger.error(f"Failed to create SparkSession: {e}", exc_info=True)
+    spark = None # Ensure spark is None if initialization fails
 
-# --- Schema Definition (from your script) ---
+# Define the schema (from your script)
 schema = StructType([
     StructField("Date", StringType(), True),
     StructField("eNodeB Name", StringType(), True),
-    StructField(" Frequency band", DoubleType(), True), 
+    StructField(" Frequency band", DoubleType(), True),
     StructField("Cell FDD TDD Indication", StringType(), True),
     StructField("Cell Name", StringType(), True),
     StructField("Downlink EARFCN", DoubleType(), True),
-    StructField("Downlink bandwidth", StringType(), True), 
+    StructField("Downlink bandwidth", StringType(), True),
     StructField("LTECell Tx and Rx Mode", StringType(), True),
     StructField("LocalCell Id", DoubleType(), True),
     StructField("eNodeB Function Name", StringType(), True),
@@ -111,88 +107,86 @@ schema = StructType([
     StructField("Governorate", StringType(), True)
 ])
 
-# No DRIVER_WRITES_FINAL_OUTPUT_PATH needed as spark-service won't write to disk.
-# No clear_directory function needed.
+# This is the base path INSIDE the spark-service container where the DRIVER writes Parquet.
+# It's bind-mounted from your host's ./data/processed directory.
+BASE_OUTPUT_PATH = "/host_data_processed" 
 
 @app.route("/process", methods=["POST"])
-def process_csv_data():
+def process_csv():
     if not spark:
         logger.error("SparkSession not available. Cannot process request.")
         return Response(response=json.dumps({"error": "Spark service unavailable"}), status=503, mimetype="application/json")
     try:
         csv_data = request.data.decode("utf-8")
-        if not csv_data.strip():
-            logger.warning("Received empty CSV data. Nothing to process.")
-            return Response(response=json.dumps({"message": "No data to process"}), status=200, mimetype="application/json")
-        
         logger.info(f"Received CSV data, length: {len(csv_data)} bytes")
+
+        if not csv_data.strip():
+            logger.warning("Received empty CSV data.")
+            return Response(response=json.dumps({"message": "No data to process"}), status=200, mimetype="application/json")
 
         lines = [line for line in csv_data.splitlines() if line.strip()]
         if not lines or (len(lines) == 1 and lines[0].startswith(schema.fieldNames()[0])):
              logger.warning("CSV data contains no data rows or only a header.")
              return Response(response=json.dumps({"message": "No data rows or only header"}), status=200, mimetype="application/json")
 
-        full_csv_rdd = spark.sparkContext.parallelize(lines)
-        df_initial = spark.read.option("header", "true").schema(schema).csv(full_csv_rdd)
-        
-        if df_initial.isEmpty():
-            logger.warning("Initial DataFrame is empty after Spark read.")
+        rdd = spark.sparkContext.parallelize(lines)
+        df = spark.read.option("header", "true").schema(schema).csv(rdd)
+
+        if df.isEmpty():
+            logger.warning("DataFrame is empty after reading CSV.")
             return Response(response=json.dumps({"message": "DataFrame empty after reading CSV"}), status=200, mimetype="application/json")
         
-        initial_count = df_initial.count()
-        logger.info(f"Initial DataFrame created by Spark cluster with {initial_count} rows.")
+        logger.info(f"Initial DataFrame created with {df.count()} rows.")
 
-        # --- Transformations done by Spark Cluster ---
-        #df_with_map = df_initial.na.fill({"Latitude": 0.0, "Longitude": 0.0}) \
-        #                           .withColumn(
-        #                               "location_map_internal", 
-        #                               create_map(lit("lat"), col("Latitude"),
-        #                                          lit("lon"), col("Longitude"))
-        #                           )
-        df_initial = df_initial.na.fill({"Latitude": 0.0, "Longitude": 0.0})
-        df_initial = df_initial.withColumn(
-            "location",
+        # Your transformations
+        df_transformed = df.na.fill({"Latitude": 0.0, "Longitude": 0.0})
+        df_transformed = df_transformed.withColumn(
+            "location_map", # Renamed to avoid confusion if original 'location' was different
             create_map(
                 lit("lat"), col("Latitude"),
                 lit("lon"), col("Longitude")
             )
         )
-        
-        # Convert the map to a JSON string for the NiFi response (and for general compatibility)
-        #df_transformed = df_with_map.withColumn(
-        #    "location", to_json(col("location_map_internal"))
-        #).drop("location_map_internal")
+        # To make it robust for Parquet AND potentially other sinks like CSV,
+        # convert the map to a JSON string.
+        df_final_for_output = df_transformed.withColumn(
+            "location", to_json(col("location_map"))
+        ).drop("location_map") # Drop the intermediate map column
 
-        # Optional date transformations (ensure they are compatible with JSON output)
-        # if "Date" in df_transformed.columns:
-        #     df_transformed = df_transformed.withColumn("Date", to_timestamp(col("Date"), "dd-MM-yyyy"))
-        #     # For JSON, timestamp is fine, or convert to ISO string:
-        #     # df_transformed = df_transformed.withColumn("timestamp_iso", date_format(col("Date"), "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"))
+        logger.info("Data transformations complete.")
 
-
-        logger.info("Data transformation complete on Spark cluster.")
-
-        # --- Collect processed data to the Driver (Flask App) ---
-        logger.info("Collecting processed data to the driver...")
-        collected_rows = df_initial.collect()
-        logger.info(f"Collected {len(collected_rows)} rows to the driver.")
+        # --- Collect to Driver ---
+        logger.info("Collecting data to driver...")
+        collected_rows = df_final_for_output.collect()
+        logger.info(f"Collected {len(collected_rows)} rows.")
 
         if not collected_rows:
-            logger.warning("No data collected to the driver. Sending empty response to NiFi.")
-            # You might want to send an empty list or a specific message
-            return Response(response="[]", status=200, mimetype="application/x-ndjson") # Example: empty NDJSON array
+            logger.warning("No rows collected. Nothing to write or send to NiFi.")
+            return Response(response=json.dumps({"message": "No data after processing"}), status=200, mimetype="application/json")
 
-        # --- Driver (Flask App) prepares response for NiFi ---
-        # The 'location' column is now a JSON string.
-        list_of_dicts = [row.asDict(recursive=True) for row in collected_rows]
-        json_strings_for_nifi = [json.dumps(d) for d in list_of_dicts]
-        response_body = "\n".join(json_strings_for_nifi)
+        # --- Driver Writes Parquet to a Unique Subdirectory ---
+        batch_id = str(uuid.uuid4()) # Generate a unique ID for this batch
+        current_batch_output_path = os.path.join(BASE_OUTPUT_PATH, f"batch_{batch_id}")
         
-        logger.info(f"Prepared {len(collected_rows)} JSON objects for response to NiFi.")
-        return Response(response=response_body, status=200, mimetype="application/x-ndjson")
+        os.makedirs(current_batch_output_path, exist_ok=True) # Ensure batch-specific subdir exists
+        logger.info(f"Output path for this batch: {current_batch_output_path}")
+
+        df_to_write_on_driver = spark.createDataFrame(collected_rows, schema=df_final_for_output.schema)
+        
+        logger.info(f"Driver writing {df_to_write_on_driver.count()} rows to Parquet at: {current_batch_output_path}")
+        df_to_write_on_driver.coalesce(1).write.mode("overwrite").option("compression", "snappy").parquet(current_batch_output_path)
+        logger.info(f"Successfully wrote Parquet for batch {batch_id} to {current_batch_output_path}")
+
+        # --- Prepare JSON response for NiFi ---
+        # The collected_rows already contain the data with 'location' as a JSON string.
+        list_of_dicts = [row.asDict(recursive=True) for row in collected_rows]
+        response_data = "\n".join([json.dumps(d) for d in list_of_dicts])
+        
+        logger.info(f"Prepared {len(collected_rows)} JSON objects for NiFi response.")
+        return Response(response=response_data, status=200, mimetype="application/x-ndjson")
 
     except Exception as e:
-        logger.error(f"Error processing CSV: {e}", exc_info=True)
+        logger.error(f"Error in /process: {e}", exc_info=True)
         error_message = str(e)
         if 'py4j.protocol.Py4JJavaError' in str(type(e)):
             try:
@@ -201,37 +195,30 @@ def process_csv_data():
             except AttributeError: pass
         return Response(response=json.dumps({"error": "Failed to process data", "details": error_message}), status=500, mimetype="application/json")
 
-# --- Shutdown, Home, Health Endpoints (mostly unchanged) ---
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
     logger.info("Shutdown endpoint called.")
-    global spark 
-    if spark:
-        logger.info("Stopping Spark session...")
-        try:
+    global spark
+    try:
+        if spark:
+            logger.info("Stopping Spark session...")
             spark.stop()
-            logger.info("Spark session stopped.")
-        except Exception as e:
-            logger.error(f"Error stopping Spark: {e}", exc_info=True)
-        finally:
             spark = None
+            logger.info("Spark session stopped.")
+    except Exception as e:
+        logger.error(f"Error stopping Spark: {e}", exc_info=True)
 
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
-        logger.warning('Not running with the Werkzeug Server or shutdown function not available. Forcing exit for Docker.')
-        os._exit(0) 
+        logger.warning("Werkzeug shutdown function not available. Forcing exit (suitable for Docker).")
+        os._exit(0)
     else:
-        logger.info("Shutting down Flask server via Werkzeug...")
+        logger.info("Attempting Werkzeug server shutdown...")
         func()
     return 'Server shutting down...'
 
-@app.route("/")
-def home():
-    status = "SparkSession is active." if spark and spark.sparkContext._jsc else "SparkSession is NOT active."
-    return f"SUUUUUUUUUUUUIIIII!!!!!! Flask-PySpark (NiFi Only Response Mode) service is running. {status}"
-
 @app.route('/health', methods=['GET'])
-def health_check(): 
+def health():
     if spark and spark.sparkContext and getattr(spark.sparkContext, '_jsc', None):
         try:
             spark.sql("SELECT 1").collect()
@@ -240,10 +227,21 @@ def health_check():
             logger.error(f"Health check Spark query failed: {e}", exc_info=False)
             return 'Spark query failed', 503
     else:
-        logger.warning("Health check: SparkSession not available or SparkContext not initialized.")
+        logger.warning("Health check: SparkSession unavailable.")
         return 'SparkSession unavailable', 503
 
+@app.route("/")
+def home():
+    status = "SparkSession is active." if spark and spark.sparkContext._jsc else "SparkSession is NOT active."
+    return f"Flask-PySpark (Cluster Mode - CollectToDriver Strategy from Original) service is running. {status}"
+
+
 if __name__ == "__main__":
-    logger.info("Starting Flask application - Spark processing on CLUSTER, response sent to NiFi (NO DISK WRITE from Spark service).")
-    # No need to ensure DRIVER_WRITES_FINAL_OUTPUT_PATH exists as we are not writing from here.
+    logger.info("Starting Flask application...")
+    try:
+        os.makedirs(BASE_OUTPUT_PATH, exist_ok=True)
+        logger.info(f"Ensured base output directory exists: {BASE_OUTPUT_PATH}")
+    except OSError as e:
+        logger.error(f"Could not create base output directory {BASE_OUTPUT_PATH}: {e}. Check permissions.", exc_info=True)
+
     app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)

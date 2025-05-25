@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.17.3
     container_name: elasticsearch
@@ -21,7 +22,8 @@ services:
     container_name: kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_SERVICEACCOUNTTOKEN=AAEAAWVsYXN0aWMva2liYW5hL2tpYmFuYS10b2tlbjoxeUZKb3FmWlJqcXlsQXFOOTQxa0tR
+      - ELASTICSEARCH_SERVICEACCOUNTTOKEN=AAEAAWVsYXN0aWMva2liYW5hL2tpYmFuYS10b2tlbjpRRWdXS1VZRFExaUhoaDM3U2QxUG1n
+
     ports:
       - "5601:5601"
     depends_on:
@@ -64,10 +66,11 @@ services:
       - ./data/processed:/data/processed
       - ./data/archive:/data/archive
       - ./data/error:/data/error
-    #depends_on: # Assuming you want NiFi to depend on NiFi Registry if it's active
-      #- nifi-registry
+#    depends_on:
+#      - nifi-registry
     networks:
       - pipeline-net
+
 
 #  nifi-registry:
 #    image: apache/nifi-registry:1.26.0
@@ -104,7 +107,8 @@ services:
     volumes:
       # The driver will write the final Parquet files directly to this path.
       # This path is mapped to the host's ./data/processed directory.
-      - ./data/processed:/host_data_processed:z
+      - ./data/processed:/host_data_processed
+
       # If you had specific logs or other data you wanted to persist from the Flask app:
       # - ./spark_service_logs:/app/logs # Example if your app logs to /app/logs
     networks:
@@ -162,7 +166,7 @@ services:
       - pipeline-net
     volumes:
       - spark_work_1:/opt/bitnami/spark/work # For Spark's temporary data
-      # - shared_processed_data:/spark_output_internal # REMOVED: Not needed if driver handles final output
+      - shared_processed_data:/spark_output_internal # Internal path for Spark output
 
   spark-worker-2:
     image: bitnami/spark:3.5.0
@@ -192,8 +196,8 @@ services:
     networks:
       - pipeline-net
     volumes:
-      - spark_work_2:/opt/bitnami/spark/work # For Spark's temporary data
-      # - shared_processed_data:/spark_output_internal # REMOVED: Not needed if driver handles final output
+      - spark_work_2:/opt/bitnami/spark/work
+      - shared_processed_data:/spark_output_internal # Internal path for Spark output
 
 volumes:
   elastic-data:
@@ -202,8 +206,8 @@ volumes:
   nifi-state:
   spark_work_1:
   spark_work_2:
-  # shared_processed_data: # REMOVED: No longer used by Spark services for output
-
+  shared_processed_data:
+ 
 networks:
   pipeline-net:
     driver: bridge

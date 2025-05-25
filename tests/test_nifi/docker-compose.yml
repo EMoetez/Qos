@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  nifi:
+    build:
+      context: .
+      args:
+        NIFI_VERSION: 2.3.0 
+    container_name: nifi_with_my_flow
+    ports:
+      - "8443:8443" 
+    environment:
+      - NIFI_WEB_HTTPS_PORT=8443
+      - SINGLE_USER_CREDENTIALS_USERNAME=admin
+      - SINGLE_USER_CREDENTIALS_PASSWORD=adminadmin123
+      - NIFI_SECURITY_USER_AUTHORIZER=single-user-authorizer
+      - NIFI_SECURITY_USER_LOGIN_IDENTITY_PROVIDER=single-user-provider
+      - NIFI_SENSITIVE_PROPS_KEY=HMu+8MgUunhfS1hRUcCUeM1x0PspQdX1
+    volumes:
+      - nifi_conf:/opt/nifi/nifi-current/conf
+      - nifi_database_repository:/opt/nifi/nifi-current/database_repository
+      - nifi_flowfile_repository:/opt/nifi/nifi-current/flowfile_repository
+      - nifi_content_repository:/opt/nifi/nifi-current/content_repository
+      - nifi_provenance_repository:/opt/nifi/nifi-current/provenance_repository
+      - nifi_state:/opt/nifi/nifi-current/state
+
+volumes:
+  nifi_conf:
+  nifi_database_repository:
+  nifi_flowfile_repository:
+  nifi_content_repository:
+  nifi_provenance_repository:
+  nifi_state:
