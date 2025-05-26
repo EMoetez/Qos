@@ -176,3 +176,4 @@ cython_debug/
 later
 change_nifi_cred.txt
 data
+tests
