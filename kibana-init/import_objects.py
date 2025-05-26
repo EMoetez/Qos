@@ -7,7 +7,7 @@ NDJSON_FILE = "kibana-objects.ndjson"
 
 # Get credentials from environment variables
 ELASTIC_USERNAME = os.getenv("ELASTIC_USERNAME", "elastic")
-ELASTIC_PASSWORD = os.getenv("ELASTIC_PASSWORD", "VRWyDh40X76CdLq76O6I")
+ELASTIC_PASSWORD = os.getenv("ELASTIC_PASSWORD", "elasticelastic123")
 
 def wait_for_kibana():
     max_retries = 60  # Wait up to 5 minutes
