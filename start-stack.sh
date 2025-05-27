@@ -10,7 +10,7 @@ ELASTIC_USER="elastic" # From your docker-compose.yml
 ELASTIC_PASS="elasticelastic123" # From your docker-compose.yml
 # The name you give to the token instance within Elasticsearch.
 # The script will try to delete and recreate this named token.
-KIBANA_TOKEN_NAME_IN_ES="kibana-runtime-token" 
+KIBANA_TOKEN_NAME_IN_ES="kibana-token" 
 
 # --- 1. Ensure Data Directories Exist and Set Host Permissions (Optional but good for dev) ---
 echo "SETUP: Ensuring data directories exist and setting permissions..."
