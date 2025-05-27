@@ -35,7 +35,7 @@ sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker
 # Make it executable
 sudo chmod +x /usr/local/bin/docker-compose
 
-sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-composedocker-compose version
+sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-composedocker-compose
 
 # --- 2. Start Elasticsearch and Wait for it to be Healthy ---
 echo "STARTUP: Bringing up ${ELASTICSEARCH_SERVICE_NAME} service..."
