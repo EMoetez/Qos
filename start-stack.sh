@@ -120,7 +120,7 @@ fi
 echo "--------------------------------------------------"
 
 # This command returns the bearer token needed for authenticating with Kibana
-docker exec -it elasticsearch bash -c "bin/elasticsearch-service-tokens create elastic/kibana kibana-token" > /tmp/kibana_token.txt
+docker exec -it elasticsearch bash -c "bin/elasticsearch-service-tokens create elastic/kibana kibana-token" > ./tmp/kibana_token.txt
 # --- 5. Bring up the rest of the services ---
 echo "STARTUP: Bringing up all other services (Kibana will use the token from .env)..."
 # Use --remove-orphans to clean up any containers from services no longer in the compose file.
