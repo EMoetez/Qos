@@ -2,7 +2,7 @@ import time
 import requests
 import os
 
-KIBANA_URL = "http://localhost:5601"
+KIBANA_URL = "http://kibana:5601"
 NDJSON_FILE = "kibana-objects.ndjson"
 
 # Get credentials from environment variables
