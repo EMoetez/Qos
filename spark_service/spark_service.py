@@ -142,13 +142,7 @@ def process_csv_data():
         initial_count = df_initial.count()
         logger.info(f"Initial DataFrame created by Spark cluster with {initial_count} rows.")
 
-        # --- Transformations done by Spark Cluster ---
-        #df_with_map = df_initial.na.fill({"Latitude": 0.0, "Longitude": 0.0}) \
-        #                           .withColumn(
-        #                               "location_map_internal", 
-        #                               create_map(lit("lat"), col("Latitude"),
-        #                                          lit("lon"), col("Longitude"))
-        #                           )
+
         df_initial = df_initial.na.fill({"Latitude": 0.0, "Longitude": 0.0})
         df_initial = df_initial.withColumn(
             "location",
@@ -165,9 +159,9 @@ def process_csv_data():
 
         # Optional date transformations (ensure they are compatible with JSON output)
         # if "Date" in df_transformed.columns:
-        #     df_transformed = df_transformed.withColumn("Date", to_timestamp(col("Date"), "dd-MM-yyyy"))
+        #     df_initial = df_initial.withColumn("Date", to_timestamp(col("Date"), "dd-MM-yyyy"))
         #     # For JSON, timestamp is fine, or convert to ISO string:
-        #     # df_transformed = df_transformed.withColumn("timestamp_iso", date_format(col("Date"), "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"))
+        #     # df_initial = df_initial.withColumn("timestamp_iso", date_format(col("Date"), "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"))
 
 
         logger.info("Data transformation complete on Spark cluster.")
