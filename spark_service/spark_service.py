@@ -162,10 +162,6 @@ def process_csv_data():
         #     df_initial = df_initial.withColumn("Date", to_timestamp(col("Date"), "MM-dd-yyyy"))
         #     # For JSON, timestamp is fine, or convert to ISO string:
         #     # df_initial = df_initial.withColumn("timestamp_iso", date_format(col("Date"), "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"))
-        
-
-
-
 
         
         logger.info("Data transformation complete on Spark cluster.")
