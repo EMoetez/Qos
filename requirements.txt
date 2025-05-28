@@ -1,3 +1,0 @@
-apt get install docker.io
-apt get install curl
-apt get install git
