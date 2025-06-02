@@ -45,7 +45,7 @@ echo "STARTUP: Waiting for ${ELASTICSEARCH_SERVICE_NAME} to be healthy..."
 max_retries=30 # ~2.5 minutes
 count=0
 # We will use curl to check health.
-until curl -s -k -u "elastic:elasticelasic123" "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" > /dev/null; do
+until curl -s -k -u "elastic:elasticelastic123" "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" > /dev/null; do
   count=$((count+1))
   if [[ $count -gt $max_retries ]]; then
     echo "ERROR: ${ELASTICSEARCH_SERVICE_NAME} did not become healthy in time. Exiting."
