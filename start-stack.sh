@@ -64,7 +64,9 @@ done
 echo "STARTUP: ${ELASTICSEARCH_SERVICE_NAME} is healthy."
 echo "--------------------------------------------------"
 
-
+echo "WAITING FOR ${ELASTICSEARCH_SERVICE_NAME} TO BE READY"
+sleep 20
+echo "WAITING TIME ENDED"
 # --- 3. Generate/Re-generate Kibana Service Token ---
 echo "TOKEN_GEN: Attempting to generate/re-generate Kibana service token '${KIBANA_TOKEN_NAME_IN_ES}'..."
 
